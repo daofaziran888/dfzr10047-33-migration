@@ -15,6 +15,9 @@
       </div>
     </header>
 
+    <PathMigrationPanel v-if="meta.key === 'nested_flatten'" />
+    <CastReceiptPanel v-else-if="meta.key === 'value_cast'" />
+
     <div class="stat-row">
       <article v-for="item in stats" :key="item.label" class="stat-card">
         <span class="stat-label">{{ item.label }}</span>
@@ -75,7 +78,12 @@
         <h3>登记{{ meta.entity }}</h3>
         <label v-for="field in meta.fields" :key="field" class="create-field">
           <span>{{ field }}</span>
-          <input v-model="createValues[field]" :data-testid="`create-${field}`" required />
+          <input
+            v-model="createValues[field]"
+            :data-testid="`create-${field}`"
+            :required="field !== '路径版本'"
+            :placeholder="field === '路径版本' ? '留空默认 dot-v1；新版填 v2 / escape-v2' : ''"
+          />
         </label>
         <div class="page-actions">
           <button class="btn" type="button" @click="showCreate = false">取消</button>
@@ -104,6 +112,8 @@ import {
   runAction as applyAction,
 } from '@/api/backend-service'
 import type { EntryRow } from '@/data/types'
+import PathMigrationPanel from '@/components/PathMigrationPanel.vue'
+import CastReceiptPanel from '@/components/CastReceiptPanel.vue'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)

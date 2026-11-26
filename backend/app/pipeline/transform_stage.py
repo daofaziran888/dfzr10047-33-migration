@@ -10,13 +10,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.pipeline.path_contract import LEGACY_DOT, normalize_version, parse_path
+
 
 class FlattenPath:
     """单条展平路径定义。"""
 
     def __init__(self, path_id: str, template_id: str, source_path: str,
                  target_columns: list[str], array_mode: str,
-                 max_depth: int, empty_policy: str):
+                 max_depth: int, empty_policy: str,
+                 path_version: str = LEGACY_DOT):
         self.path_id = path_id
         self.template_id = template_id
         self.source_path = source_path
@@ -24,6 +27,7 @@ class FlattenPath:
         self.array_mode = array_mode
         self.max_depth = max_depth
         self.empty_policy = empty_policy
+        self.path_version = normalize_version(path_version)
         self.flattened_rows = 0
         self.status = "待展平"
 
@@ -36,6 +40,7 @@ class FlattenPath:
             "array_mode": self.array_mode,
             "max_depth": self.max_depth,
             "empty_policy": self.empty_policy,
+            "path_version": self.path_version,
             "flattened_rows": self.flattened_rows,
             "status": self.status,
         }
@@ -118,7 +123,7 @@ class TransformStage:
         if path is None:
             return False, [], f"展平路径 {path_id} 不存在"
 
-        segments = [s for s in path.source_path.replace("$.", "").split(".") if s]
+        segments = parse_path(path.source_path, path.path_version)
         if len(segments) > path.max_depth:
             path.status = "层数超限"
             return False, [], (
@@ -163,17 +168,32 @@ class TransformStage:
         path.flattened_rows = len(rows)
         return True, rows, f"展平完成，{len(documents)} 份文档展开为 {len(rows)} 行"
 
-    def _resolve_path(self, doc: Any, segments: list[str]) -> Any:
-        """按路径逐层解析，遇到数组即收集全部元素。"""
+    def _resolve_path(self, doc: Any, segments: list[Any]) -> Any:
+        """按路径逐层解析，遇到数组即收集全部元素。
+
+        新路径版本传入 ``PathSegment``；同时保留旧式字符串段的测试/调用兼容。
+        """
         if not segments:
             return [doc]
         head, *rest = segments
-        array_marker = head.endswith("[*]")
-        key = head[:-3] if array_marker else head
+        if hasattr(head, "key"):
+            key = head.key
+            array_marker = bool(head.array_marker)
+            expands_array = getattr(head, "expands_array", True)
+            array_index = getattr(head, "array_index", None)
+        else:
+            array_marker = str(head).endswith("[*]")
+            key = str(head)[:-3] if array_marker else str(head)
+            expands_array = True
+            array_index = None
         node = doc.get(key) if isinstance(doc, dict) else None
         if node is None:
             return None
         if array_marker or isinstance(node, list):
+            if array_marker and not expands_array and isinstance(node, list):
+                if array_index is None or array_index >= len(node):
+                    return None
+                node = [node[array_index]]
             collected: list[Any] = []
             for item in node if isinstance(node, list) else [node]:
                 sub = self._resolve_path(item, rest)

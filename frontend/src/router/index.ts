@@ -7,7 +7,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'overview', component: Overview },
-    { path: '/:moduleKey', name: 'module', component: WorkbenchView, props: true },
+    { path: '/:moduleKey/:panel?', name: 'module', component: WorkbenchView, props: true },
   ],
 })
 
